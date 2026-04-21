@@ -1,0 +1,48 @@
+# Data (too large for Git)
+data/
+wlasl.json
+*.mp4
+*.avi
+*.mov
+*.npy
+*.npz
+
+# Model checkpoints (use Git LFS or HF Hub for real releases)
+*.pt
+*.pth
+*.onnx
+*.tflite
+
+# Outputs
+*.png
+!docs/*.png
+training_curves.png
+confusion_matrix.png
+attention_viz.png
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Kaggle
+kaggle.json
+.kaggle/
