@@ -1,0 +1,111 @@
+# 100 common BSL words for the translation dataset
+# Greetings & social
+hello
+goodbye
+please
+thank-you
+sorry
+yes
+no
+welcome
+good-morning
+good-afternoon
+good-evening
+good-night
+# Pronouns
+i
+you
+he
+she
+we
+they
+my
+your
+# Question words
+what
+where
+when
+who
+why
+how
+which
+# Common verbs
+go
+come
+eat
+drink
+sleep
+work
+play
+help
+want
+need
+like
+love
+know
+think
+understand
+learn
+teach
+see
+hear
+speak
+sign
+read
+write
+# Adjectives
+good
+bad
+happy
+sad
+big
+small
+hot
+cold
+new
+old
+fast
+slow
+easy
+hard
+# Family / people
+family
+mother
+father
+sister
+brother
+friend
+child
+baby
+# Time
+today
+tomorrow
+yesterday
+now
+later
+morning
+night
+week
+month
+year
+# Places
+home
+school
+office
+shop
+hospital
+# Numbers / basics
+one
+two
+three
+four
+five
+# Misc essentials
+food
+water
+toilet
+money
+phone
+name
+deaf
+hearing

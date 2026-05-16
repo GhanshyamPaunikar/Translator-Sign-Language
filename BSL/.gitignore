@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Data caches (large; rebuild from scripts)
+bsl_dataset/landmarks/
+out/
+*.ckpt
+*.pt
+*.pth
+
+# Logs
+*.log
+runs/
+wandb/

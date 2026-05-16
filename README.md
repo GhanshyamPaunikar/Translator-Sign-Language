@@ -12,24 +12,34 @@
 
 ---
 
+> ### 🚀 Stage 2 is live — BSL word-level translation
+> This repo started as ASL **alphabet** recognition (Stage 1, below).
+> The follow-up — moving from static letters to dynamic, full-body
+> **British Sign Language words** — lives in [**BSL/**](BSL/).
+> It includes a 100-word dataset, a Bi-LSTM trainer, a text→sign
+> generator, and an honest post-mortem of why cross-signer accuracy
+> is still the wall everyone hits. **→ [Read Stage 2](BSL/README.md)**
+
+---
+
 ## 🎯 Live Demo
 
 Here's the system recognizing ASL letters in real time on my webcam:
 
 <p align="center">
-  <img src="screenshots/demo_A.png" width="49%" alt="Letter A — closed fist">
-  <img src="screenshots/demo_D.png" width="49%" alt="Letter D — index finger up">
+  <img src="demo_A.png" width="49%" alt="Letter A — closed fist">
+  <img src="demo_D.png" width="49%" alt="Letter D — index finger up">
 </p>
 <p align="center">
-  <img src="screenshots/demo_F.png" width="49%" alt="Letter F — thumb-index circle, 3 fingers up">
-  <img src="screenshots/demo_I.png" width="49%" alt="Letter I — only pinky up">
+  <img src="demo_F.png" width="49%" alt="Letter F — thumb-index circle, 3 fingers up">
+  <img src="demo_I.png" width="49%" alt="Letter I — only pinky up">
 </p>
 <p align="center">
-  <img src="screenshots/demo_U.png" width="49%" alt="Letter U — index and middle fingers together">
-  <img src="screenshots/demo_W.png" width="49%" alt="Letter W — three fingers up">
+  <img src="demo_U.png" width="49%" alt="Letter U — index and middle fingers together">
+  <img src="demo_W.png" width="49%" alt="Letter W — three fingers up">
 </p>
 <p align="center">
-  <img src="screenshots/demo_Y.png" width="60%" alt="Letter Y — thumb and pinky extended">
+  <img src="demo_Y.png" width="60%" alt="Letter Y — thumb and pinky extended">
 </p>
 
 **What you're seeing:** MediaPipe detects 21 landmarks on my hand in real time (the green dots). My code then analyzes the geometric relationships between those landmarks to classify the ASL letter. The prediction and confidence appear in the top-left corner.
@@ -176,25 +186,6 @@ python asl_alphabet.py --train
    ```
 
 The trained version is much more accurate because it's calibrated to your specific hand.
-
----
-
-## 📁 Project Structure
-
-```
-asl-recognition/
-├── asl_alphabet.py              ← Main alphabet recognizer (start here)
-├── realtime_demo.py             ← Word-level demo (research prototype)
-├── model.py                     ← SignTransformer architecture
-├── landmarks.py                 ← MediaPipe extraction utilities
-├── ASL_Word_Translator.ipynb    ← Colab training notebook
-├── sign_transformer.pt          ← Pretrained word-level model
-├── vocab.json                   ← Word-level class labels
-├── screenshots/                 ← Demo images shown above
-├── requirements.txt
-├── README.md
-└── LICENSE
-```
 
 ---
 
