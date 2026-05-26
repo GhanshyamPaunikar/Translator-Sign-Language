@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BSL recogniser — browser demo</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; min-height: 100vh; background: #0d0d10; color: #eee;
+    font: 14px/1.4 -apple-system, system-ui, sans-serif;
+    display: grid; grid-template-columns: 1fr 320px; gap: 24px; padding: 24px;
+  }
+  h1 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+  .card { background: #1a1a1f; border-radius: 12px; padding: 16px; }
+  #cam-wrap { position: relative; aspect-ratio: 4/3; max-width: 720px;
+              min-height: 360px; background: #000; border-radius: 8px; }
+  video, canvas { width: 100%; height: 100%; border-radius: 8px; background: #000;
+                  display: block; object-fit: cover; }
+  canvas { display: none; }
+  #overlay {
+    position: absolute; inset: 0; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 600; color: #fff;
+    text-shadow: 0 0 6px rgba(0,0,0,0.7);
+  }
+  #recbar {
+    position: absolute; left: 12px; right: 12px; bottom: 12px;
+    height: 6px; border-radius: 3px; background: rgba(255,255,255,0.15);
+    overflow: hidden; opacity: 0; transition: opacity 0.15s;
+  }
+  #recbar.on { opacity: 1; }
+  #recbar > div { width: 0%; height: 100%; background: #e84d4d; transition: width 0.05s linear; }
+  button {
+    appearance: none; border: 0; border-radius: 8px; padding: 10px 14px;
+    background: #4a8df0; color: white; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  button.secondary { background: #2a2a32; }
+  .controls { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .pred { display: grid; grid-template-columns: 1fr 60px; align-items: center;
+          gap: 8px; padding: 6px 0; border-bottom: 1px solid #26262e; }
+  .pred:last-child { border-bottom: 0; }
+  .barwrap { position: relative; height: 16px; background: #26262e; border-radius: 4px;
+             overflow: hidden; }
+  .barwrap > div { height: 100%; background: linear-gradient(90deg, #4a8df0, #6ab7ff); }
+  .barwrap > span { position: absolute; left: 6px; top: 0; line-height: 16px; font-size: 12px;
+                    color: #eaeaea; }
+  .prob { text-align: right; font-variant-numeric: tabular-nums; color: #aaa; }
+  .note { color: #888; font-size: 12px; margin-top: 8px; }
+  #status { min-height: 1.4em; color: #aaa; }
+  details { margin-top: 12px; color: #888; font-size: 12px; }
+  details summary { cursor: pointer; }
+  .wordlist { font-family: ui-monospace, monospace; font-size: 11px; color: #aaa;
+              margin-top: 6px; line-height: 1.5; }
+  @media (max-width: 800px) {
+    body { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<main class="card">
+  <h1>BSL recogniser — browser demo</h1>
+  <div id="cam-error" style="display:none; background:#3a1f22; border:1px solid #e84d4d;
+       color:#fbb; padding:12px; border-radius:8px; margin-bottom:12px; font-size:13px;">
+  </div>
+  <div id="cam-wrap">
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="capture"></canvas>
+    <div id="overlay">waiting for camera…</div>
+    <div id="recbar"><div></div></div>
+  </div>
+  <div class="controls">
+    <button id="rec" disabled>Record (2.5s)</button>
+    <button id="reset" class="secondary">Reset</button>
+    <button id="cam-toggle" class="secondary">Mirror</button>
+    <button id="cam-retry" class="secondary">Retry camera</button>
+  </div>
+  <div id="status">Requesting camera access…</div>
+  <div id="cam-debug" style="font-family: ui-monospace, monospace; font-size: 11px;
+       color: #888; margin-top: 6px; white-space: pre-wrap;"></div>
+  <div class="note">
+    Tip: face the camera front-on, fit head + shoulders + hands in frame,
+    sign at the same speed as a normal BSL signer (~2 seconds per word).
+  </div>
+</main>
+
+<aside class="card">
+  <h1>Top predictions</h1>
+  <div id="preds">
+    <div class="note">No prediction yet.</div>
+  </div>
+  <details>
+    <summary id="vocab-summary">Vocabulary loading…</summary>
+    <div class="wordlist" id="wordlist"></div>
+  </details>
+</aside>
+
+<script>
+const RECORD_SECONDS = 2.5;
+const TARGET_FPS = 12; // ~30 frames over 2.5s, matches model SEQ_LEN
+const CAPTURE_W = 320;
+const CAPTURE_H = 240;
+
+const video = document.getElementById("video");
+const capture = document.getElementById("capture");
+const ctx = capture.getContext("2d");
+const overlay = document.getElementById("overlay");
+const recbar = document.getElementById("recbar");
+const recbarFill = recbar.querySelector("div");
+const recBtn = document.getElementById("rec");
+const resetBtn = document.getElementById("reset");
+const camToggleBtn = document.getElementById("cam-toggle");
+const statusEl = document.getElementById("status");
+const predsEl = document.getElementById("preds");
+
+capture.width = CAPTURE_W;
+capture.height = CAPTURE_H;
+
+let mirrored = true;
+function applyMirror() {
+  video.style.transform = mirrored ? "scaleX(-1)" : "";
+}
+applyMirror();
+
+camToggleBtn.addEventListener("click", () => {
+  mirrored = !mirrored;
+  applyMirror();
+});
+
+const errEl = document.getElementById("cam-error");
+const camRetryBtn = document.getElementById("cam-retry");
+
+function showCamError(html) {
+  errEl.style.display = "block";
+  errEl.innerHTML = html;
+  recBtn.disabled = true;
+}
+
+const debugEl = document.getElementById("cam-debug");
+function debug(line) {
+  debugEl.textContent += line + "\n";
+}
+
+async function initCamera() {
+  errEl.style.display = "none";
+  debugEl.textContent = "";
+  statusEl.textContent = "Requesting camera access…";
+  overlay.textContent = "waiting for camera…";
+  debug(`origin=${location.origin}  ua=${navigator.userAgent.slice(0, 80)}…`);
+  debug(`isSecureContext=${window.isSecureContext}  hasMD=${!!navigator.mediaDevices}`);
+
+  if (!window.isSecureContext) {
+    showCamError(
+      `<b>Insecure context:</b> the browser only allows camera on
+      <code>https://</code> or <code>localhost</code>. Current origin:
+      <code>${location.origin}</code>. Open
+      <a href="http://127.0.0.1:${location.port}" style="color:#fbb">
+      http://127.0.0.1:${location.port}</a> instead, or use
+      <code>localhost</code> in the URL.`);
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showCamError(
+      `<b>getUserMedia not available</b> in this browser. Try Chrome, Firefox,
+      Edge, or Safari (latest).`);
+    return;
+  }
+  try {
+    debug("calling getUserMedia(video=true, audio=false)…");
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" }, audio: false,
+    });
+    const tracks = stream.getVideoTracks();
+    debug(`got stream: ${tracks.length} video track(s)`);
+    for (const t of tracks) {
+      const s = t.getSettings ? t.getSettings() : {};
+      debug(`  track: label="${t.label}" state=${t.readyState} muted=${t.muted} ` +
+            `enabled=${t.enabled} ${s.width||'?'}x${s.height||'?'}@${s.frameRate||'?'}fps`);
+    }
+    video.srcObject = stream;
+    video.onloadedmetadata = () => {
+      debug(`video metadata: ${video.videoWidth}x${video.videoHeight}`);
+    };
+    try {
+      await video.play();
+      debug(`video.play() ok  paused=${video.paused}  readyState=${video.readyState}`);
+    } catch (pe) {
+      debug(`video.play() FAILED: ${pe.name}: ${pe.message}`);
+      showCamError(
+        `<b>Browser blocked video playback</b> (${pe.name}). Click anywhere on
+        the page, then click <b>Retry camera</b>. (Safari sometimes requires
+        a user gesture to start playback.)`);
+      return;
+    }
+    overlay.textContent = "";
+    statusEl.textContent = "Camera ready. Click Record and sign.";
+    recBtn.disabled = false;
+  } catch (e) {
+    let hint = "";
+    if (e.name === "NotAllowedError" || e.name === "PermissionDeniedError") {
+      hint = `<br><br><b>How to fix on macOS:</b><br>
+        1. Click the camera icon in your browser's address bar and Allow.<br>
+        2. Open <b>System Settings → Privacy &amp; Security → Camera</b> and
+        make sure your browser (Chrome / Safari / Firefox) is enabled.<br>
+        3. Quit and reopen the browser if you just toggled it on.<br>
+        4. Click <b>Retry camera</b> below.`;
+    } else if (e.name === "NotFoundError" || e.name === "DevicesNotFoundError") {
+      hint = `<br><br>No camera device found. Plug in / enable a webcam and click Retry.`;
+    } else if (e.name === "NotReadableError") {
+      hint = `<br><br>The camera is already in use by another app (Zoom, Photo Booth,
+        Teams, etc.). Quit that app and click Retry.`;
+    } else if (e.name === "OverconstrainedError") {
+      hint = `<br><br>Your camera doesn't support 640×480 user-facing. We'll
+        retry with default constraints — click Retry.`;
+    }
+    showCamError(
+      `<b>Camera access failed</b> (${e.name || "Error"}): ${e.message}${hint}`);
+    statusEl.textContent = "";
+  }
+}
+camRetryBtn.addEventListener("click", initCamera);
+
+function captureFrameJpeg() {
+  // Draw video (un-mirrored, since the model was trained on un-mirrored clips).
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.drawImage(video, 0, 0, CAPTURE_W, CAPTURE_H);
+  ctx.restore();
+  return capture.toDataURL("image/jpeg", 0.7);
+}
+
+async function record() {
+  recBtn.disabled = true;
+  resetBtn.disabled = true;
+  predsEl.innerHTML = '<div class="note">Recording…</div>';
+  recbar.classList.add("on");
+  recbarFill.style.width = "0%";
+  overlay.textContent = "REC";
+  const frames = [];
+  const interval = 1000 / TARGET_FPS;
+  const t0 = performance.now();
+  await new Promise((resolve) => {
+    const tick = () => {
+      const elapsed = performance.now() - t0;
+      if (elapsed >= RECORD_SECONDS * 1000) { resolve(); return; }
+      frames.push(captureFrameJpeg());
+      recbarFill.style.width = (elapsed / (RECORD_SECONDS * 1000) * 100).toFixed(1) + "%";
+      setTimeout(tick, interval);
+    };
+    tick();
+  });
+  overlay.textContent = "";
+  recbar.classList.remove("on");
+  statusEl.textContent = `Sent ${frames.length} frames, classifying…`;
+
+  try {
+    const t1 = performance.now();
+    const res = await fetch("/predict", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frames }),
+    });
+    const data = await res.json();
+    const dt = ((performance.now() - t1) / 1000).toFixed(2);
+    if (data.error) {
+      statusEl.textContent = "Error: " + data.error;
+      predsEl.innerHTML = `<div class="note">${data.error}</div>`;
+    } else {
+      statusEl.textContent = `Done in ${dt}s (${data.n_frames} frames decoded).`;
+      renderPreds(data.predictions);
+    }
+  } catch (e) {
+    statusEl.textContent = "Request failed: " + e.message;
+  } finally {
+    recBtn.disabled = false;
+    resetBtn.disabled = false;
+  }
+}
+
+function renderPreds(preds) {
+  predsEl.innerHTML = "";
+  if (!preds || preds.length === 0) {
+    predsEl.innerHTML = '<div class="note">No prediction.</div>';
+    return;
+  }
+  for (const p of preds) {
+    const row = document.createElement("div");
+    row.className = "pred";
+    row.innerHTML = `
+      <div class="barwrap">
+        <div style="width:${(p.prob * 100).toFixed(1)}%"></div>
+        <span>${p.word}</span>
+      </div>
+      <div class="prob">${(p.prob * 100).toFixed(1)}%</div>
+    `;
+    predsEl.appendChild(row);
+  }
+}
+
+async function loadVocab() {
+  try {
+    const r = await fetch("/vocab");
+    const data = await r.json();
+    const labels = data.labels || [];
+    document.getElementById("vocab-summary").textContent =
+      `Vocabulary (${labels.length} words)`;
+    document.getElementById("wordlist").textContent = labels.join(" · ");
+  } catch (e) {
+    document.getElementById("vocab-summary").textContent = "Vocabulary unavailable";
+  }
+}
+loadVocab();
+
+recBtn.addEventListener("click", record);
+resetBtn.addEventListener("click", () => {
+  predsEl.innerHTML = '<div class="note">No prediction yet.</div>';
+  statusEl.textContent = "Ready.";
+});
+
+initCamera();
+</script>
+</body>
+</html>

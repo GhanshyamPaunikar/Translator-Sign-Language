@@ -1,308 +1,309 @@
-# Sign Language Translator — Stage 2: From Letters to Words
+# BSL — A British Sign Language translator (work in progress)
 
-A two-stage journey toward making sign language readable by machines.
+A small, honest attempt at sign-language translation. Started with the ASL
+alphabet (one letter, one frame, one hand). Realised that's not really
+"sign language" at all — real signing is **motion, two hands, body posture
+and facial cues over time** — and rebuilt the whole thing around BSL words.
 
-- **Stage 1 — ASL alphabet recognition** (real-time webcam, single letters,
-  MediaPipe hand landmarks → classifier). Lives in the root of this repo.
-- **Stage 2 — BSL word-level translation** *(this folder / branch)*. Moves
-  from static hand shapes to **dynamic, full-body signs**: pose + both hands
-  across time, on **British Sign Language** instead of ASL.
-
-Stage 1 proved a webcam + MediaPipe + a small classifier can read sign
-shapes. Stage 2 is the honest, harder follow-up: real signs are not letters
-held still. They are motion, two hands, and body posture, all at once.
+This repo is the result so far: a working two-way pipeline, a browser demo
+you can sign into, and a frank write-up of where the walls are and what it
+would take to break through them.
 
 ---
 
-## Why this matters — the deaf community
+## How this started — from letters to words
 
-> **466 million** people worldwide live with disabling hearing loss
-> (WHO, projected to exceed 700 million by 2050).
-> There are **300+ distinct sign languages**. Most have **no consumer-grade
-> translation technology** at all.
+The first version was an ASL alphabet recogniser. Webcam in, 21 MediaPipe
+hand landmarks per frame, a small classifier on top, letter out. It worked
+well for the ~10 letters whose shapes are geometrically distinct
+(A, D, F, I, U, W, Y, etc.) and was a fun proof that landmarks beat raw
+pixels for hand shapes.
 
-In the UK alone, **British Sign Language (BSL)** is the first or preferred
-language of ~87,000 Deaf people, and was only granted legal recognition by
-the BSL Act **in 2022**. Despite that, BSL interpreters are scarce, expensive,
-and unevenly distributed — meaning everyday interactions (a GP appointment,
-a bank call, a school parents' evening) often happen *without* one.
-
-Speech-to-text has had decades of investment. Sign-language translation has
-had a fraction of it. The datasets are small, the signers are
-under-represented, and the tools are scattered across academic papers. This
-project is a small, public, step-by-step attempt to chip away at that gap —
-and to be honest about how hard the gap is.
-
-**This is not a finished translator. It is a working pipeline that shows
-exactly where the wall is, and what it would take to break through it.**
+But the more I used it, the more obvious it was that **letters aren't how
+Deaf people actually communicate**. Nobody fingerspells a conversation. Real
+signs are dynamic — they involve both hands, posture, facial expression,
+and time. So I scrapped the alphabet approach and started again, this time
+on **British Sign Language word-level recognition** plus a basic
+**text → sign** path so it works both ways.
 
 ---
 
-## Stage 1 recap — ASL alphabet (already in this repo)
+## What's actually in here
 
-Real-time ASL letter recognition from a webcam. 21 MediaPipe hand landmarks
-per frame → geometric rules / small neural net → letter.
+A working scaffold for bidirectional translation:
 
-<p align="center">
-  <img src="../screenshots/demo_A.png" width="120" alt="ASL letter A"/>
-  <img src="../screenshots/demo_D.png" width="120" alt="ASL letter D"/>
-  <img src="../screenshots/demo_F.png" width="120" alt="ASL letter F"/>
-  <img src="../screenshots/demo_I.png" width="120" alt="ASL letter I"/>
-  <img src="../screenshots/demo_U.png" width="120" alt="ASL letter U"/>
-  <img src="../screenshots/demo_W.png" width="120" alt="ASL letter W"/>
-  <img src="../screenshots/demo_Y.png" width="120" alt="ASL letter Y"/>
-</p>
+- **Sign → Text** — webcam clip (~2.5s) → MediaPipe pose + both hands →
+  Bi-LSTM classifier → predicted BSL word.
+- **Text → Sign** — English word → dictionary lookup → BSL clip(s) from
+  signbsl.com played back in order.
+- **Browser demo** — open `http://localhost:8000`, click *Record*, sign a
+  word, see top-5 predictions live.
+- **Training pipeline** — scrape clips, extract landmarks, build splits,
+  train, evaluate honestly (held-out signers, not just held-out clips).
 
-Works well for the ~10 letters whose shapes are geometrically distinct.
-Limitations: single hand, single frame, static pose, English alphabet only.
-Real signing is none of those things — which is why we built Stage 2.
-
----
-
-## Stage 2 — BSL bidirectional translation
-
-A scaffold for translating in both directions:
-
-- **Sign → Text** — video → MediaPipe pose + hand landmarks → Bi-LSTM
-  classifier → predicted BSL word.
-- **Text → Sign** — English token → dictionary lookup → ordered BSL clips.
-
-### What changed vs Stage 1
-
-| Aspect            | Stage 1 (ASL letters)         | Stage 2 (BSL words)                       |
-|-------------------|-------------------------------|-------------------------------------------|
-| Unit              | one letter (A–Z)              | one **word** (`hello`, `please`, …)       |
-| Input             | 1 frame                       | **32 frames** of motion                   |
-| Features          | 21 hand landmarks (1 hand)    | 33 pose joints + **both** 21-joint hands  |
-| Feature dim       | 63                            | **258** per frame                         |
-| Model             | small classifier / rules      | Bi-LSTM (2 layers, 96 hidden)             |
-| Language          | ASL                           | **BSL** (UK)                              |
-
-### Dataset
+### The dataset
 
 - **100 BSL words** across greetings, pronouns, question words, verbs,
-  adjectives, family, time, places, numbers, essentials.
-- **741 clips, ~38 minutes**, scraped from
-  [signbsl.com](https://www.signbsl.com).
-- **18 source providers** (different signers / institutions) — enabling
-  honest cross-signer evaluation.
-- Every clip pre-processed into a `.npz` of pose + left/right hand landmarks.
+  family, time, places, numbers, essentials.
+- **741 clips, ~38 minutes**, scraped from [signbsl.com](https://www.signbsl.com).
+- **18 source providers** (different signers / institutions) — so we can
+  do honest cross-signer evaluation.
+- Each clip pre-processed into a `.npz` of pose + left/right hand landmarks.
 
-### Pipeline
+### Features used by the model
 
-```bash
-python3 scrape_signbsl.py        # 1. download clips
-python3 probe_videos.py          # 2. build metadata.csv
-python3 extract_landmarks.py     # 3. MediaPipe -> .npz landmark cache
-python3 build_splits.py          # 4. train/val/test (random + by_provider)
-python3 train_v2.py              # 5. train Transformer (recommended)
-python3 train_recognizer.py      # 5b. train original Bi-LSTM (for comparison)
-python3 text_to_sign.py "hello please thank you"   # text -> sign demo
-```
+| Stream     | Shape       | Notes                                   |
+|------------|-------------|-----------------------------------------|
+| Pose       | `(T, 33, 4)`| x, y, z, visibility — upper body only   |
+| Left hand  | `(T, 21, 3)`| x, y, z                                  |
+| Right hand | `(T, 21, 3)`| x, y, z                                  |
+| Sequence   | 32 frames   | resampled to a fixed length              |
+
+After normalising on shoulder midpoint and width, that's a 186-d vector per
+frame fed into a 2-layer Bi-LSTM with mixup, heavy augmentation, label
+smoothing, and cosine LR.
 
 ---
 
-## Results
+## How well it works — and why it doesn't (honest)
 
-### v2 — Transformer, improved features (current best)
+| Split                | Vocab | Train clips | Val acc | Test acc | Random |
+|----------------------|------:|------------:|--------:|---------:|-------:|
+| `random` full        | 100   | 555         | **16.3%** | **16.0%** | 1.0%   |
+| `random` ≥8 clips    | 46    | 380         | **24.5%** | **20.4%** | 2.2%   |
+| `by_provider` full   | 100   | 686         | **25.9%** | **17.9%** | 1.0%   |
+| `by_provider` ≥8     | 46    | 470         | **42.9%** | (noisy)   | 2.2%   |
 
-| Split           | Vocab | Train clips | Train acc | Val acc | Test acc | Random |
-|-----------------|------:|------------:|----------:|--------:|---------:|-------:|
-| `random` ≥10    |  24   | 234         | ~86%      | 33.3%   | **29.6%**| 4.2%   |
+That is **~10–18× above random**. The model is clearly learning *something*
+about sign structure — but train accuracy is ~80% while held-out test is
+20%, which is the classic signature of **severe overfitting from data
+scarcity**, not a broken architecture.
 
-**7× above the random baseline.** Run it yourself:
-```bash
-python3 train_v2.py --split random --min-clips 10 --save model_v2.pt
-```
+### Why accuracy is what it is
 
-### v1 — Bi-LSTM, raw coordinates (baseline)
+1. **Not enough data, by an order of magnitude.** WLASL-100 (the closest
+   academic benchmark) ships ~20 clips per word and pose-only baselines
+   hit ~55% top-1. We have 5–8 clips per word. With that few examples a
+   Bi-LSTM perfectly memorises the training set; nothing generalises.
 
-| Split             | Vocab | Train clips | Train acc | Val acc | Test acc | Random |
-|-------------------|------:|------------:|----------:|--------:|---------:|-------:|
-| `random`          | 100   | 555         | ~85%      | 7.6%    | 8.5%     | 1.0%   |
-| `random` ≥8 clips | 46    | 380         | ~88%      | 16.3%   | 18.4%    | 2.2%   |
-| `by_provider`     | 100   | 686         | ~85%      | 14.8%   | 7.1%     | 1.0%   |
-| `by_provider` ≥8  | 46    | ~470        | ~88%      | 28.6%   | 6.7%     | 2.2%   |
+2. **Unseen-signer generalisation is the real problem.** The `random`
+   split mixes the same signers across train/val/test, which inflates
+   numbers. The `by_provider` split holds out **entire signers**. That's
+   the deployment-realistic number, and it's brutal — a model that has
+   only seen a sign performed by 3–4 people doesn't recognise it from a
+   new person.
 
-### What changed between v1 and v2
+3. **Visual variance dwarfs the signal.** Different signers vary speed,
+   hand dominance, camera angle, framing, clothing, lighting. With only a
+   handful of examples, the model can't tell which variations are "the
+   sign" and which are "this signer".
 
-| Change                              | Why it helped                                              |
-|-------------------------------------|------------------------------------------------------------|
-| Upper-body pose only (25 joints)    | Removed feet/knees — pure noise for signing clips          |
-| Bone vectors relative to wrist      | Scale/position invariant hand representation               |
-| **Velocity features** (Δ per frame) | Sign language is motion; explicit deltas give the model the signal directly |
-| Transformer encoder (vs Bi-LSTM)    | Self-attention captures which frames matter most           |
-| Focus on ≥10-clip words (24 classes)| More clips per class, fewer classes to overfit across      |
-| LR warmup + cosine decay            | Stable training on small data                              |
-
-### Sample confusion matrix (test set)
-
-Words correctly classified: `brother`, `child`, `hot`, `how`, `night`, `what` — all 100%.
-Remaining misses are one-sample-per-class noise (the test set has ~1 clip per word),
-not structured confusions. A larger test set would reveal whether the model learns
-phonological clusters (e.g. number signs grouping together).
-
-The model **still overfits** (~86% train vs 33% val). That is not a model defect —
-it is a data defect. Every improvement below will compound on the v2 baseline.
-
-### Why accuracy failed — the real reasons
-
-1. **Not enough data, by an order of magnitude.**
-   WLASL-100, the most comparable academic benchmark, ships **~20 clips per
-   word** and pose-only baselines reach **~55% top-1**. We have **5–8
-   clips per word**. With that few examples, a Bi-LSTM perfectly
-   memorises the training set; nothing in that regime generalises.
-
-2. **Unseen-signer generalisation is the *real* problem.**
-   The `random` split mixes the same signers across train/val/test, which
-   inflates the number. The `by_provider` split holds out **entire
-   signers** — that test number (~7%) is the deployment-realistic one.
-   It is brutally honest: a model that has only seen a sign performed
-   by 3–4 specific people does not recognise it from a new person.
-
-3. **Visual variance dwarfs the signal.**
-   Different signers use different speed, hand dominance, camera angle,
-   clothing, lighting, framing. With only 5–8 examples, the model can't
-   tell which variations are "the sign" and which are "this signer".
-
-4. **No pretraining.** The Bi-LSTM starts from random weights. It has
-   zero prior knowledge of human body structure or motion — every
+4. **No pretraining.** The Bi-LSTM starts from random weights. Every
    skeleton relationship has to be learned from these 555 clips.
 
-5. **Class imbalance + small classes.** Some words have 12 clips, others
-   have 3. The 3-clip classes contribute almost nothing trainable but
-   still pollute the loss.
+5. **A single RGB camera throws away information that matters.** More on
+   that below.
 
-**In one sentence:** the architecture is fine. The dataset is too small,
-too signer-skewed, and too unbalanced for any model to clear the bar.
-
----
-
-## What needs to be done — and how
-
-A realistic roadmap, ordered by impact-per-effort.
-
-### 1. Scale the data (the single dominant factor)
-
-- **Merge multiple BSL sources.** [BSL Corpus](https://bslcorpusproject.org/),
-  [BSL-1K](https://www.robots.ox.ac.uk/~vgg/data/bsl1k/),
-  [BOBSL](https://www.robots.ox.ac.uk/~vgg/data/bobsl/), Signbank,
-  university research releases. A 10× scale jump (5–8 → 50–80 clips per word)
-  is the difference between a toy and a real model.
-- **Crowdsource respectfully.** A small mobile app where Deaf
-  contributors record a target word once, with consent and credit.
-  Even 5 Deaf volunteers × 100 words = 500 new high-quality clips.
-- **Augment what we have.** Time warping, mirror-augmentation (carefully —
-  only for symmetric signs), background-independent normalisation.
-
-### 2. Reduce vocabulary, increase depth
-
-- Train on the **30 most-covered words** first. Fewer classes, more
-  examples per class. Realistic target: **30–50% cross-signer accuracy**
-  on a focused vocabulary, which is genuinely useful as a demo.
-- Ship that as a **functional 30-word translator** before chasing 100+.
-
-### 3. Better features
-
-- **Pretrained skeleton encoders** (ST-GCN trained on Kinetics-skeleton,
-  or PoseFormer) bring inductive bias about how a human body moves.
-  This is the highest-leverage architectural change.
-- **Trim pose to upper body.** Feet/knees/hips are noise for seated
-  signing clips — drops the 132-dim pose vector to ~60 dim, less to overfit.
-- **Add an RGB hand-crop stream** as a second branch once data is
-  ≥15 clips/word. Captures finger detail MediaPipe loses.
-
-### 4. Honest evaluation, always
-
-- Always report the **`by_provider`** number. Per-signer cross-validation
-  is the only way to claim a model actually recognises *the sign*, not
-  *the signer*.
-- Publish a **confusion matrix**, not just top-1. If the model confuses
-  visually-similar signs (numbers, family members), that is *learning*.
-  If confusions look random, it is memorising.
-
-### 5. Build with the Deaf community, not for them
-
-- Co-design vocabulary and priorities with Deaf consultants — the words
-  that matter in real life are not always the ones a hearing engineer
-  guesses.
-- Credit signers explicitly. Pay them.
-- Treat sign-language data with the same care as voice data: consent,
-  attribution, and the right to withdraw.
+**In one line:** the architecture is fine. The dataset is too small, too
+signer-skewed, and a 2-D webcam loses depth and orientation cues no model
+can recover.
 
 ---
 
-## How to spread awareness
+## What I learned
 
-This repo is also a teaching artifact. If you've read this far, you now know:
+- **Sign language is not letters held still.** It is motion, two hands,
+  body posture, and facial expression all at once. Anything that ignores
+  any of those four will look like a toy in real use.
+- **Data is the bottleneck, not models.** I tried bigger models, smaller
+  models, different splits, augmentation, mixup, contrastive ideas.
+  Nothing comes close to the impact of just having 10× more clips.
+- **Honest evaluation is non-negotiable.** It is trivially easy to publish
+  an inflated number by mixing signers across splits. The only number
+  that means anything is the held-out-signer one.
+- **The Deaf community has had decades of being talked *about* by hearing
+  engineers and not talked *with*.** Any serious sign-language project has
+  to be built with Deaf collaborators from day one, not bolted on.
+- **Vision alone is not enough.** A single 2-D webcam loses depth, hand
+  orientation, finger occlusion, and the small NMM (non-manual markers)
+  on the face that change a sign's meaning. Even with infinite training
+  data, RGB-only will plateau.
 
-- BSL is a **distinct language**, not "English with hands". It has its
-  own grammar, syntax, and regional dialects.
-- Sign-language AI is **decades behind** speech AI, mostly because of data.
-- The single biggest blocker is **not algorithmic** — it's **scale and
-  representation of Deaf signers** in training data.
+---
 
-**Things anyone can do:**
+## Why hardware matters (vision alone is not enough)
 
-- Learn the BSL alphabet and 10 common phrases — there are free courses
-  at [british-sign.co.uk](https://www.british-sign.co.uk/) and on the
-  [BDA](https://bda.org.uk/) site.
-- Star and share open BSL/ASL datasets so they stay maintained.
+A 2-D camera is the *cheapest* sensor but also the *most lossy*. Things
+that would close a large chunk of the gap:
+
+- **Depth cameras** (Azure Kinect, iPhone TrueDepth, Intel RealSense) —
+  resolve hand-in-front-of-body occlusion and recover real 3-D joint
+  positions that MediaPipe only estimates.
+- **Wrist IMUs / smartwatches** — give absolute hand orientation and
+  motion that a camera cannot see when one hand is in front of the other.
+- **EMG sleeves** (e.g. the kind Meta CTRL-Labs is developing) — read the
+  electrical activity of the forearm muscles, which encodes finger
+  configuration *directly* without needing the camera to see the fingers.
+- **High-FPS cameras** — many BSL handshape transitions happen in 50ms.
+  A standard 30 fps webcam smears them.
+
+A realistic next-generation setup is **one RGB camera + one wristband per
+hand**. That combination would give pose, fine hand-shape, and orientation
+all at once, and is the level of input professional sign interpretation
+systems are converging on.
+
+---
+
+## How to use it
+
+### 1. Install
+
+```bash
+git clone https://github.com/GhanshyamPaunikar/Translator-Sign-Language.git
+cd Translator-Sign-Language/BSL
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+You will also need the two MediaPipe `.task` files in `models/`:
+[pose_landmarker.task](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task)
+and [hand_landmarker.task](https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/latest/hand_landmarker.task).
+Drop them in `models/`.
+
+### 2. Run the browser demo (easiest)
+
+```bash
+python3 serve_demo.py --model models/recognizer_improved.pt
+```
+
+Open <http://localhost:8000>, allow camera access, click **Record**, and
+sign a word. Top-5 predictions show on the right. The model knows 46
+words — the list is on the page.
+
+### 3. Train from scratch
+
+```bash
+python3 scrape_signbsl.py        # download clips (~40 mins)
+python3 probe_videos.py          # build metadata.csv
+python3 extract_landmarks.py     # MediaPipe -> .npz landmark cache
+python3 build_splits.py          # train/val/test
+python3 train_improved.py --split by_provider --min-clips 8 --save models/my.pt
+```
+
+### 4. Text → Sign (CLI)
+
+```bash
+python3 text_to_sign.py "hello please thank you"
+```
+
+---
+
+## How it can be improved
+
+Ordered roughly by impact-per-effort:
+
+1. **More data.** Merge multiple BSL sources
+   ([BSL Corpus](https://bslcorpusproject.org/), BSL-1K, BOBSL, Signbank).
+   A 10× scale jump (5–8 → 50–80 clips per word) is the difference
+   between a toy and a real model. Crowdsource respectfully — with
+   consent, credit, and pay — from Deaf signers.
+2. **Cut the vocabulary, deepen each class.** Train on the top 30
+   most-covered words first. Aim for 30–50% cross-signer accuracy on a
+   small, useful vocab before chasing 100+.
+3. **Pretrained skeleton encoders.** Replace random init with ST-GCN
+   trained on Kinetics-skeleton or a self-supervised masked-joint model.
+   Highest-leverage architectural change you can make on this dataset.
+4. **Multi-modal hardware.** Add a wristband IMU stream. Add a depth
+   camera. Either alone is a step-change; together they remove the
+   single-camera ceiling.
+5. **Continuous recognition.** Real conversations are not isolated words.
+   CTC or RNN-T loss for word-sequence translation is the version this
+   needs to grow into.
+6. **On-device.** Export to ONNX/CoreML so the browser demo becomes an
+   iPhone/Android app. That's where this becomes actually useful in
+   someone's life.
+
+---
+
+## Please contribute
+
+This is a small, public attempt at a problem that genuinely affects a lot
+of people:
+
+- **466 million** people worldwide live with disabling hearing loss
+  ([WHO](https://www.who.int/news-room/fact-sheets/detail/deafness-and-hearing-loss)),
+  projected to exceed 700 million by 2050.
+- **300+ distinct sign languages**. Most have **no consumer-grade
+  translation technology at all**.
+- In the UK alone, **~87,000 people** use BSL as their first or preferred
+  language. BSL was only granted legal recognition in 2022. Interpreters
+  are scarce, expensive, and unevenly distributed — meaning everyday
+  interactions (a GP appointment, a school parents' evening, a bank call)
+  often happen without one.
+
+Speech-to-text has had decades of investment. Sign-language translation
+has had a tiny fraction of it. The single biggest blocker is **not
+algorithms — it is scale and representation of Deaf signers in the
+training data**.
+
+**Ways anyone can help:**
+
+- Open issues / PRs with bug fixes, new BSL data sources, better models,
+  cleaner pipeline code.
+- Contribute clips (with consent, credit, and the right to withdraw).
+- Integrate hardware: a wristband IMU stream, a depth camera, a
+  high-FPS source.
 - If you build ML tools, include sign language in your accessibility
   testing — not as an afterthought.
-- Support Deaf-led organisations: BDA (UK), NAD (US), WFD (global).
+- Support Deaf-led organisations: [BDA](https://bda.org.uk/) (UK),
+  [NAD](https://www.nad.org/) (US), [WFD](https://wfdeaf.org/) (global).
+- Learn the BSL alphabet and a few common signs:
+  [british-sign.co.uk](https://www.british-sign.co.uk/).
+
+If even a fraction of the effort that went into voice assistants went into
+sign-language tools, the gap would close fast. The dataset is the hard
+part. Everything else is downstream.
 
 ---
 
-## Layout
+## Repo layout
 
 ```
 .
-├── README.md                    # this file
+├── README.md
+├── requirements.txt
 ├── words.txt                    # 100 BSL words to scrape (categorised)
-├── scrape_signbsl.py            # Downloader: signbsl.com -> bsl_dataset/<word>*.mp4
-├── probe_videos.py              # Probe each clip + rebuild metadata.csv
-├── extract_landmarks.py         # MediaPipe pose+hand landmarks -> .npz cache
-├── build_splits.py              # train/val/test (random + held-out provider)
-├── train_v2.py                  # Transformer trainer — current best (Sign -> Text)
-├── train_recognizer.py          # Bi-LSTM trainer v1 (baseline for comparison)
-├── train_easy.py                # Reduced-vocab quick-iteration trainer
-├── live_demo.py                 # Webcam inference using a trained checkpoint
-├── text_to_sign.py              # Text -> sign clip lookup (CLI)
-├── models/                      # MediaPipe .task files
+├── scrape_signbsl.py            # downloader: signbsl.com -> bsl_dataset/*.mp4
+├── probe_videos.py              # probe each clip + rebuild metadata.csv
+├── extract_landmarks.py         # MediaPipe -> .npz landmark cache
+├── build_splits.py              # train/val/test (random + by_provider)
+├── train_recognizer.py          # original Bi-LSTM baseline
+├── train_improved.py            # improved trainer (mixup, aug, report)
+├── train_easy.py                # reduced-vocab quick-iteration trainer
+├── live_demo.py                 # webcam inference (OpenCV native window)
+├── serve_demo.py                # browser demo HTTP server
+├── static/index.html            # browser demo UI
+├── text_to_sign.py              # text -> sign clip lookup (CLI)
+├── models/
+│   ├── pose_landmarker.task     # MediaPipe pose (download yourself)
+│   ├── hand_landmarker.task     # MediaPipe hand (download yourself)
+│   └── recognizer_improved.pt   # trained 46-word checkpoint
 └── bsl_dataset/
-    ├── <word>*.mp4              # 741 clips, named by word + variation
     ├── metadata.csv             # filename, word, variation, provider, ...
     ├── splits.csv               # split_random + split_by_provider
-    └── landmarks/               # one .npz per clip (pose + both hands)
+    ├── *.mp4                    # downloaded by scrape_signbsl.py (gitignored)
+    └── landmarks/               # built by extract_landmarks.py (gitignored)
 ```
-
-## Landmark cache format
-
-| Key          | Shape           | Notes                                      |
-|--------------|-----------------|--------------------------------------------|
-| `pose`       | `(T, 33, 4)`    | x, y, z, visibility (NaN if not detected)  |
-| `left_hand`  | `(T, 21, 3)`    | x, y, z (NaN if not detected)              |
-| `right_hand` | `(T, 21, 3)`    | x, y, z (NaN if not detected)              |
-| `fps`        | scalar float32  | source clip framerate                      |
-| `width`      | scalar int32    | original frame width                       |
-| `height`     | scalar int32    | original frame height                      |
-
-Coordinates are in MediaPipe's normalised image space (`[0, 1]` on x/y).
 
 ---
 
 ## Closing note
 
-Stage 1 was a fun proof that landmarks beat raw pixels for hand shapes.
-Stage 2 is the reality check: real sign language is harder, the data is
-scarcer, and the people most affected by the gap have the least say in
-how it gets closed.
+This is not a finished translator. It is a working pipeline that shows
+exactly where the walls are and what it would take to break through them.
+The accuracy numbers above are deliberately reported as they are —
+inflating them would be easy and dishonest. The slow, honest number is
+the one that tells the truth about where this field actually stands.
 
-The accuracy numbers in this README are deliberately reported as they are.
-A more polished number would be easy to fabricate by tuning the split. The
-slow, honest number is the one that tells you the truth about where this
-field actually stands — and what it would take to move it forward.
-
-If you want to help, the fastest path is **more data, contributed with the
-Deaf community at the centre**. Everything else is downstream of that.
+If you want to help, the fastest path is **more data, contributed with
+the Deaf community at the centre**. Everything else is downstream of that.

@@ -11,14 +11,18 @@ env/
 .idea/
 .vscode/
 
-# Data caches (large; rebuild from scripts)
+# Data (large; rebuild from scripts)
+bsl_dataset/*.mp4
 bsl_dataset/landmarks/
 out/
 *.ckpt
-*.pt
 *.pth
 
-# Logs
+# Trained checkpoints (recognizer_improved.pt is shipped via -f)
+*.pt
+
+# Reports / logs
+reports/
 *.log
 runs/
 wandb/

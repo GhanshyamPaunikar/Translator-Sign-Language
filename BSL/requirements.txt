@@ -1,0 +1,9 @@
+torch>=2.0
+numpy>=1.24
+mediapipe>=0.10
+opencv-python>=4.8
+
+# scraping
+requests>=2.31
+beautifulsoup4>=4.12
+selenium>=4.15
